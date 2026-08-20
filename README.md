@@ -38,6 +38,8 @@ cargo build --release
 
 `~/.claude/settings.json` に以下を追加する。hook入力のJSON(標準入力)から `session_id` を取り出して渡している。
 
+`Notification` は `notification_type` が `permission_prompt` / `elicitation_dialog` / `agent_needs_input` のときだけ黄色にする。`idle_prompt`(画面表示なしの入力待ちリマインダー)は実質idleなので除外している。
+
 ```json
 {
   "hooks": {
@@ -48,7 +50,7 @@ cargo build --release
       { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/idle?session=$SID\" >/dev/null 2>&1 || true" }] }
     ],
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/waiting?session=$SID\" >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "J=$(cat); TYPE=$(echo \"$J\" | sed -n 's/.*\"notification_type\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); SID=$(echo \"$J\" | sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); case \"$TYPE\" in permission_prompt|elicitation_dialog|agent_needs_input) curl -s -m 1 -X POST \"http://127.0.0.1:8765/waiting?session=$SID\" >/dev/null 2>&1 ;; esac; true" }] }
     ],
     "PreCompact": [
       { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/compacting?session=$SID\" >/dev/null 2>&1 || true" }] }
