@@ -2,11 +2,17 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+fn default_color_compacting() -> String {
+    "#00FFFF".to_string()
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Config {
     pub color_generating: String,
     pub color_idle: String,
     pub color_waiting: String,
+    #[serde(default = "default_color_compacting")]
+    pub color_compacting: String,
     pub breath_period_ms: u64,
     pub breath_min: f64,
     pub breath_step_ms: u64,
@@ -18,6 +24,7 @@ impl Default for Config {
             color_generating: "#FF0000".to_string(),
             color_idle: "#00FF00".to_string(),
             color_waiting: "#FFFF00".to_string(),
+            color_compacting: default_color_compacting(),
             breath_period_ms: 3000,
             breath_min: 0.15,
             breath_step_ms: 100,

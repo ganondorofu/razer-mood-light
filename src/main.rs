@@ -127,6 +127,7 @@ fn main() {
     let color_generating = config::parse_color(&cfg.color_generating);
     let color_idle = config::parse_color(&cfg.color_idle);
     let color_waiting = config::parse_color(&cfg.color_waiting);
+    let color_compacting = config::parse_color(&cfg.color_compacting);
 
     let uri: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let base_color = Arc::new(AtomicU32::new(color_idle));
@@ -139,10 +140,16 @@ fn main() {
             min: cfg.breath_min,
             step: Duration::from_millis(cfg.breath_step_ms),
         };
-        thread::spawn(move || breathing_loop(uri, base_color, params));
+        thread::Builder::new()
+            .stack_size(128 * 1024)
+            .spawn(move || breathing_loop(uri, base_color, params))
+            .expect("failed to spawn breathing thread");
     }
 
-    thread::spawn(|| tray::run("Claude Code キーボードライト"));
+    thread::Builder::new()
+        .stack_size(128 * 1024)
+        .spawn(|| tray::run("Claude Code キーボードライト"))
+        .expect("failed to spawn tray thread");
 
     let server = Server::http(LISTEN_ADDR).expect("failed to bind local port");
     for request in server.incoming_requests() {
@@ -150,6 +157,7 @@ fn main() {
             "/generating" => Some(color_generating),
             "/idle" => Some(color_idle),
             "/waiting" => Some(color_waiting),
+            "/compacting" => Some(color_compacting),
             _ => None,
         };
 

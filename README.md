@@ -5,6 +5,7 @@ Claude Code が生成中かどうかを、Razer Chroma 対応キーボードの�
 - 生成中: 赤で呼吸
 - 完了: 緑で呼吸
 - 確認待ち(質問・権限プロンプト): 黄色で呼吸
+- コンパクト中: シアンで呼吸
 
 タスクトレイに常駐し、HTTPローカルAPI (`127.0.0.1:8765`) 経由で色を切り替える。Claude Code の hooks から呼び出す想定。
 
@@ -29,6 +30,7 @@ cargo build --release
    - `POST /generating` — 赤
    - `POST /idle` — 緑
    - `POST /waiting` — 黄色
+   - `POST /compacting` — シアン
 
 ### Claude Code hooks との連携例
 
@@ -45,6 +47,12 @@ cargo build --release
     ],
     "Notification": [
       { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/waiting >/dev/null 2>&1 || true" }] }
+    ],
+    "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/compacting >/dev/null 2>&1 || true" }] }
+    ],
+    "PostCompact": [
+      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/generating >/dev/null 2>&1 || true" }] }
     ]
   }
 }
@@ -71,6 +79,7 @@ Register-ScheduledTask -TaskName "ClaudeMoodLight" -Action $action -Trigger @($l
   "color_generating": "#FF0000",
   "color_idle": "#00FF00",
   "color_waiting": "#FFFF00",
+  "color_compacting": "#00FFFF",
   "breath_period_ms": 3000,
   "breath_min": 0.15,
   "breath_step_ms": 100
