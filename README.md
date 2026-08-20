@@ -26,33 +26,35 @@ cargo build --release
 ## 使い方
 
 1. exe を実行するとタスクトレイに常駐する(右クリックで終了可能)
-2. 以下のエンドポイントにPOSTすると色が切り替わる
-   - `POST /generating` — 赤
-   - `POST /idle` — 緑
-   - `POST /waiting` — 黄色
-   - `POST /compacting` — シアン
+2. 以下のエンドポイントにPOSTすると色が切り替わる。`?session=<id>` を付けるとセッションごとに状態を管理でき、複数のClaude Codeセッションを並行して動かしていても、どれか1つでも生成中/確認待ちなら該当色を維持する(優先度: 黄色 > シアン > 赤 > 緑)
+   - `POST /generating?session=<id>` — 赤
+   - `POST /idle?session=<id>` — 緑(該当セッションを終了扱いにする)
+   - `POST /waiting?session=<id>` — 黄色
+   - `POST /compacting?session=<id>` — シアン
 
-### Claude Code hooks との連携例
+`session` を省略した場合は共有の既定セッション扱いになる(単一セッションでの手動テスト用)。
 
-`~/.claude/settings.json` に以下を追加する。
+### Claude Code hooks との連携例(複数セッション対応)
+
+`~/.claude/settings.json` に以下を追加する。hook入力のJSON(標準入力)から `session_id` を取り出して渡している。
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/generating >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/generating?session=$SID\" >/dev/null 2>&1 || true" }] }
     ],
     "Stop": [
-      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/idle >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/idle?session=$SID\" >/dev/null 2>&1 || true" }] }
     ],
     "Notification": [
-      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/waiting >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/waiting?session=$SID\" >/dev/null 2>&1 || true" }] }
     ],
     "PreCompact": [
-      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/compacting >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/compacting?session=$SID\" >/dev/null 2>&1 || true" }] }
     ],
     "PostCompact": [
-      { "hooks": [{ "type": "command", "command": "curl -s -m 1 -X POST http://127.0.0.1:8765/generating >/dev/null 2>&1 || true" }] }
+      { "hooks": [{ "type": "command", "command": "SID=$(sed -n 's/.*\"session_id\"[[:space:]]*:[[:space:]]*\"\\([^\"]*\\)\".*/\\1/p'); curl -s -m 1 -X POST \"http://127.0.0.1:8765/generating?session=$SID\" >/dev/null 2>&1 || true" }] }
     ]
   }
 }

@@ -2,9 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod config;
+mod sessions;
 mod single_instance;
 mod tray;
 
+use sessions::{Colors, Sessions, State};
 use serde_json::json;
 use std::f64::consts::PI;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -17,6 +19,7 @@ const CHROMA_BASE: &str = "http://localhost:54235/razer/chromasdk";
 const LISTEN_ADDR: &str = "127.0.0.1:8765";
 const KB_ROWS: usize = 6;
 const KB_COLS: usize = 22;
+const DEFAULT_SESSION: &str = "_default";
 
 fn agent() -> &'static ureq::Agent {
     static AGENT: OnceLock<ureq::Agent> = OnceLock::new();
@@ -116,6 +119,21 @@ fn breathing_loop(uri: Arc<Mutex<Option<String>>>, base_color: Arc<AtomicU32>, p
     }
 }
 
+/// Splits "/generating?session=abc123" into (path, session_id). A missing or
+/// empty session query param falls back to a shared default slot, so plain
+/// manual curl testing without ?session=... still works.
+fn parse_request(url: &str) -> (&str, String) {
+    let mut parts = url.splitn(2, '?');
+    let path = parts.next().unwrap_or("");
+    let session = parts
+        .next()
+        .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("session=")))
+        .filter(|s| !s.is_empty())
+        .unwrap_or(DEFAULT_SESSION)
+        .to_string();
+    (path, session)
+}
+
 fn main() {
     if !single_instance::acquire() {
         // Another copy is already running; this is just a periodic
@@ -124,13 +142,16 @@ fn main() {
     }
 
     let cfg = config::load_or_create();
-    let color_generating = config::parse_color(&cfg.color_generating);
-    let color_idle = config::parse_color(&cfg.color_idle);
-    let color_waiting = config::parse_color(&cfg.color_waiting);
-    let color_compacting = config::parse_color(&cfg.color_compacting);
+    let colors = Colors {
+        generating: config::parse_color(&cfg.color_generating),
+        idle: config::parse_color(&cfg.color_idle),
+        waiting: config::parse_color(&cfg.color_waiting),
+        compacting: config::parse_color(&cfg.color_compacting),
+    };
 
     let uri: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-    let base_color = Arc::new(AtomicU32::new(color_idle));
+    let base_color = Arc::new(AtomicU32::new(colors.idle));
+    let sessions = Arc::new(Sessions::new());
 
     {
         let uri = Arc::clone(&uri);
@@ -153,16 +174,29 @@ fn main() {
 
     let server = Server::http(LISTEN_ADDR).expect("failed to bind local port");
     for request in server.incoming_requests() {
-        let color = match request.url() {
-            "/generating" => Some(color_generating),
-            "/idle" => Some(color_idle),
-            "/waiting" => Some(color_waiting),
-            "/compacting" => Some(color_compacting),
-            _ => None,
+        let (path, session) = parse_request(request.url());
+        let handled = match path {
+            "/generating" => {
+                sessions.set(session, State::Generating);
+                true
+            }
+            "/waiting" => {
+                sessions.set(session, State::Waiting);
+                true
+            }
+            "/compacting" => {
+                sessions.set(session, State::Compacting);
+                true
+            }
+            "/idle" => {
+                sessions.clear(&session);
+                true
+            }
+            _ => false,
         };
 
-        if let Some(color) = color {
-            base_color.store(color, Ordering::Relaxed);
+        if handled {
+            base_color.store(sessions.overall_color(&colors), Ordering::Relaxed);
             let _ = request.respond(Response::from_string("ok"));
         } else {
             let _ = request.respond(Response::from_string("unknown").with_status_code(404));
